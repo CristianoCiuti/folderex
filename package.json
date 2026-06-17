@@ -16,11 +16,21 @@
     "tunnel",
     "share",
     "cloudflare",
+    "loophole",
     "https",
-    "file-browser"
+    "file-browser",
+    "filesharing"
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CristianoCiuti/folderex.git"
+  },
+  "bugs": {
+    "url": "https://github.com/CristianoCiuti/folderex/issues"
+  },
+  "homepage": "https://github.com/CristianoCiuti/folderex#readme",
   "dependencies": {
     "chalk": "^5.3.0",
     "commander": "^12.1.0",

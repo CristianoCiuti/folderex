@@ -156,16 +156,6 @@ The URL stays stable for the entire session. Press `Ctrl+C` to stop.
 - Internet connection (for the tunnel)
 - Free loophole.cloud account (for loophole provider only)
 
-## Development
-
-```bash
-git clone https://github.com/your-org/folderex.git
-cd folderex
-npm install
-npm run build
-node dist/index.js ./test-folder -u admin -p test
-```
-
 ## License
 
 MIT
