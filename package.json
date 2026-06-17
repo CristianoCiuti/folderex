@@ -1,0 +1,40 @@
+{
+  "name": "folderex",
+  "version": "1.0.0",
+  "description": "Share any local folder via a public HTTPS URL with basic auth protection",
+  "main": "dist/index.js",
+  "bin": {
+    "folderex": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "file-server",
+    "tunnel",
+    "share",
+    "cloudflare",
+    "https",
+    "file-browser"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "express": "^4.21.0",
+    "mime-types": "^2.1.35"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/mime-types": "^2.1.4",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "type": "module"
+}
