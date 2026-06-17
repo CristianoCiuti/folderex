@@ -16,7 +16,15 @@ import {
 import type { Provider } from "./config.js";
 import chalk from "chalk";
 import { resolve } from "path";
-import { existsSync, statSync } from "fs";
+import { existsSync, statSync, readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const pkg = JSON.parse(
+  readFileSync(join(__dirname, "..", "package.json"), "utf-8")
+);
 
 const program = new Command();
 
@@ -25,7 +33,7 @@ program
   .description(
     "Share any local folder via a public HTTPS URL with basic auth protection"
   )
-  .version("1.0.0");
+  .version(pkg.version);
 
 // ── Main command: serve ──────────────────────────────────────────────
 
