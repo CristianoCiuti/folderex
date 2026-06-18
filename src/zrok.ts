@@ -173,6 +173,46 @@ function isZrokEnabled(binPath: string): boolean {
   }
 }
 
+/**
+ * If a name has a stale share bound to it (from a crashed session),
+ * delete and recreate the name to release the orphaned share.
+ */
+function releaseStaleShare(binPath: string, name: string): void {
+  const env = { ...process.env, HOME: homedir(), USERPROFILE: homedir() };
+  const opts = { stdio: ["pipe", "pipe", "pipe"] as ("pipe")[], env };
+
+  try {
+    // Try to delete the name — if a stale share is attached, the error
+    // message will contain the share token we need to remove first.
+    execSync(`"${binPath}" delete name ${name}`, opts);
+  } catch (err: any) {
+    const stderr = err?.stderr?.toString?.() || err?.message || "";
+    // Error format: "name '...' ... still attached to share '<token>'; unshare it before..."
+    const tokenMatch = stderr.match(/attached to share '([a-zA-Z0-9]+)'/);
+    if (tokenMatch) {
+      try {
+        execSync(`"${binPath}" delete share ${tokenMatch[1]}`, opts);
+      } catch {
+        // Share might already be gone server-side
+      }
+      // Retry deleting the name now that the share is removed
+      try {
+        execSync(`"${binPath}" delete name ${name}`, opts);
+      } catch {
+        // Name might already be deleted
+      }
+    }
+    // If delete name failed for another reason (e.g. name doesn't exist), that's fine
+  }
+
+  // (Re)create the name
+  try {
+    execSync(`"${binPath}" create name ${name}`, opts);
+  } catch {
+    // Name might already exist if delete wasn't needed
+  }
+}
+
 let tunnelProcess: ChildProcess | null = null;
 
 export async function startZrokTunnel(
@@ -191,27 +231,19 @@ export async function startZrokTunnel(
     );
   }
 
-  // Ensure the custom name exists (create if needed, ignore if already exists)
+  // Ensure the custom name exists and is free from stale shares.
+  // delete+create resets any orphaned share binding from a crashed session.
   if (subdomain) {
-    try {
-      execSync(`"${binPath}" create name ${subdomain}`, {
-        stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env, HOME: homedir(), USERPROFILE: homedir() },
-      });
-    } catch {
-      // Name probably already exists — that's fine
-    }
+    releaseStaleShare(binPath, subdomain);
   }
 
-  // Try to start the share, and if there's a stale conflict, clean it up and retry
-  return attemptShare(binPath, port, subdomain, true);
+  return attemptShare(binPath, port, subdomain);
 }
 
 function attemptShare(
   binPath: string,
   port: number,
-  subdomain: string | undefined,
-  canRetry: boolean
+  subdomain: string | undefined
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const args = ["share", "public", "--headless", "--force-local"];
@@ -289,19 +321,6 @@ function attemptShare(
 
         const output = allOutput.trim();
 
-        // Stale share conflict: clean it up and retry
-        if (
-          canRetry &&
-          subdomain &&
-          output.includes("already in use")
-        ) {
-          cleanupStaleShare(binPath, subdomain)
-            .then(() => attemptShare(binPath, port, subdomain, false))
-            .then(resolve)
-            .catch(reject);
-          return;
-        }
-
         let message = `zrok exited with code ${code}.`;
         if (
           output.includes("not enabled") ||
@@ -320,40 +339,6 @@ function attemptShare(
       }
     });
   });
-}
-
-/**
- * Find and delete the stale share that is blocking our name.
- */
-async function cleanupStaleShare(
-  binPath: string,
-  subdomain: string
-): Promise<void> {
-  try {
-    // List shares and find the one using our name
-    const output = execSync(`"${binPath}" list shares`, {
-      stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, HOME: homedir(), USERPROFILE: homedir() },
-    }).toString();
-
-    // Find the share token for our subdomain (line contains "subdomain.shares.zrok.io")
-    const lines = output.split("\n");
-    for (const line of lines) {
-      if (line.includes(`${subdomain}.shares.zrok.io`)) {
-        // Extract share token (first column, format: │ <token> │ ...)
-        const match = line.match(/│\s*([a-zA-Z0-9]+)\s*│/);
-        if (match) {
-          execSync(`"${binPath}" delete share ${match[1]}`, {
-            stdio: ["pipe", "pipe", "pipe"],
-            env: { ...process.env, HOME: homedir(), USERPROFILE: homedir() },
-          });
-          return;
-        }
-      }
-    }
-  } catch {
-    // If we can't clean up, the retry will fail and show the error
-  }
 }
 
 // Cleanup on process exit
