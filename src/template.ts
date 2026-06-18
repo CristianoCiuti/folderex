@@ -424,7 +424,8 @@ export function renderDirectory(options: RenderOptions): string {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(13, 17, 23, 0.85);
+      background: color-mix(in srgb, var(--bg) 65%, transparent);
+      backdrop-filter: blur(1px);
       z-index: 900;
       align-items: center;
       justify-content: center;
