@@ -127,10 +127,11 @@ function svgIcon(type: string): string {
   return icons[type] || icons.file;
 }
 
-function actionIcons(): { share: string; download: string } {
+function actionIcons(): { share: string; download: string; trash: string } {
   return {
     share: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
     download: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+    trash: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
   };
 }
 
@@ -172,6 +173,7 @@ export function renderDirectory(options: RenderOptions): string {
         <td class="col-actions">
           <button class="btn-action btn-share" title="Copy link" onclick="shareUrl('${resourcePath.replace(/'/g, "\\'")}')">${icons.share}</button>
           <a class="btn-action btn-download" title="Download" href="${downloadPath}">${icons.download}</a>
+          <button class="btn-action btn-delete" title="Delete" onclick="deleteEntry('${resourcePath.replace(/'/g, "\\'")}', '${entry.name.replace(/'/g, "\\'")}')">${icons.trash}</button>
         </td>
       </tr>`;
     })
@@ -357,7 +359,7 @@ export function renderDirectory(options: RenderOptions): string {
     }
 
     .col-actions {
-      width: 80px;
+      width: 110px;
       white-space: nowrap;
       text-align: right;
     }
@@ -385,6 +387,77 @@ export function renderDirectory(options: RenderOptions): string {
 
     .btn-share.copied {
       color: var(--green);
+    }
+
+    .btn-delete:hover {
+      color: #f85149;
+      background: rgba(248, 81, 73, 0.1);
+    }
+
+    /* --- Upload button --- */
+    .btn-upload {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-dim);
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      margin-right: 8px;
+    }
+
+    .btn-upload:hover {
+      background: var(--hover-bg);
+      color: var(--text);
+      border-color: var(--text-dim);
+    }
+
+    .btn-upload svg { display: block; }
+
+    /* --- Drop zone overlay --- */
+    .drop-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(13, 17, 23, 0.85);
+      z-index: 900;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .drop-overlay.active {
+      display: flex;
+    }
+
+    .drop-overlay-box {
+      border: 2px dashed var(--accent);
+      border-radius: 16px;
+      padding: 48px 64px;
+      text-align: center;
+      color: var(--text);
+    }
+
+    .drop-overlay-box svg {
+      margin-bottom: 12px;
+      color: var(--accent);
+    }
+
+    .drop-overlay-text {
+      font-size: 16px;
+      font-weight: 500;
+    }
+
+    .drop-overlay-sub {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-top: 4px;
     }
 
     .icon {
@@ -582,6 +655,10 @@ export function renderDirectory(options: RenderOptions): string {
       </div>
       <nav class="breadcrumbs">${breadcrumbHtml}</nav>
       <div class="header-right">
+        <button class="btn-upload" onclick="triggerUpload()" title="Upload files">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Upload
+        </button>
         <span class="theme-label" id="themeLabel"></span>
         <button class="theme-toggle" onclick="cycleTheme()" title="Switch theme" id="themeBtn">
           <svg class="theme-icon theme-icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -621,6 +698,16 @@ export function renderDirectory(options: RenderOptions): string {
   </div>
 
   <div class="toast" id="toast"></div>
+
+  <div class="drop-overlay" id="dropOverlay">
+    <div class="drop-overlay-box">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <div class="drop-overlay-text">Drop files to upload</div>
+      <div class="drop-overlay-sub">Files will be uploaded to the current directory</div>
+    </div>
+  </div>
+
+  <input type="file" id="fileInput" multiple style="display:none">
 
   <script>
     // --- Theme ---
@@ -717,6 +804,102 @@ export function renderDirectory(options: RenderOptions): string {
           location.reload();
         });
     }
+
+    // --- Delete ---
+    function deleteEntry(resourcePath, name) {
+      if (!confirm("Delete \\\"" + name + "\\\"?")) return;
+      fetch("/__api/delete", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: resourcePath })
+      })
+      .then(function(res) {
+        if (!res.ok) return res.json().then(function(d) { throw new Error(d.error || "Delete failed"); });
+        return res.json();
+      })
+      .then(function() {
+        showToast("Deleted");
+        refreshFileList();
+      })
+      .catch(function(err) {
+        showToast("Error: " + err.message);
+      });
+    }
+
+    // --- Upload ---
+    var currentPath = "${currentPath.replace(/"/g, '\\"')}";
+
+    function triggerUpload() {
+      document.getElementById("fileInput").click();
+    }
+
+    function uploadFiles(files, overwrite) {
+      var fd = new FormData();
+      fd.append("path", currentPath);
+      if (overwrite) fd.append("overwrite", "true");
+      for (var i = 0; i < files.length; i++) {
+        fd.append("files", files[i]);
+      }
+      fetch("/__api/upload", { method: "POST", body: fd })
+        .then(function(res) {
+          if (res.status === 409) {
+            return res.json().then(function(data) {
+              var names = data.conflicts.join(", ");
+              if (confirm(names + " already exist(s). Overwrite?")) {
+                uploadFiles(files, true);
+              }
+              return null;
+            });
+          }
+          if (!res.ok) return res.json().then(function(d) { throw new Error(d.error || "Upload failed"); });
+          return res.json();
+        })
+        .then(function(data) {
+          if (data && data.ok) {
+            showToast(data.files.length + " file(s) uploaded");
+            refreshFileList();
+          }
+        })
+        .catch(function(err) {
+          showToast("Error: " + err.message);
+        });
+    }
+
+    document.getElementById("fileInput").addEventListener("change", function(e) {
+      var files = e.target.files;
+      if (files.length > 0) uploadFiles(files, false);
+      e.target.value = "";
+    });
+
+    // --- Drag & Drop ---
+    (function() {
+      var overlay = document.getElementById("dropOverlay");
+      var dragCount = 0;
+
+      document.addEventListener("dragenter", function(e) {
+        e.preventDefault();
+        dragCount++;
+        if (dragCount === 1) overlay.classList.add("active");
+      });
+
+      document.addEventListener("dragleave", function(e) {
+        e.preventDefault();
+        dragCount--;
+        if (dragCount <= 0) { dragCount = 0; overlay.classList.remove("active"); }
+      });
+
+      document.addEventListener("dragover", function(e) {
+        e.preventDefault();
+      });
+
+      document.addEventListener("drop", function(e) {
+        e.preventDefault();
+        dragCount = 0;
+        overlay.classList.remove("active");
+        var files = e.dataTransfer.files;
+        if (files.length > 0) uploadFiles(files, false);
+      });
+    })();
 
     // --- WebSocket ---
     (function() {

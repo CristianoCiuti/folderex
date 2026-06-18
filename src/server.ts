@@ -1,10 +1,11 @@
 import express from "express";
 import { createServer } from "http";
 import { resolve, join, relative, extname, basename } from "path";
-import { readdirSync, statSync, existsSync, watch } from "fs";
+import { readdirSync, statSync, existsSync, watch, unlinkSync, rmSync, renameSync } from "fs";
 import mime from "mime-types";
 import { WebSocketServer, WebSocket } from "ws";
 import { ZipArchive } from "archiver";
+import multer from "multer";
 import { renderDirectory } from "./template.js";
 
 export interface ServerOptions {
@@ -96,6 +97,106 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
       return;
     }
     next();
+  });
+
+  // JSON body parser (for delete API)
+  app.use(express.json());
+
+  // --- Multer for file uploads (temp storage, then move to target) ---
+  const upload = multer({ dest: join(root, ".folderex-uploads-tmp") });
+
+  // --- Delete API ---
+  app.delete("/__api/delete", (req, res) => {
+    const { path: filePath } = req.body as { path?: string };
+    if (!filePath || typeof filePath !== "string") {
+      res.status(400).json({ error: "Missing path" });
+      return;
+    }
+
+    const fsPath = resolve(join(root, filePath));
+
+    // Security: prevent path traversal
+    if (!fsPath.startsWith(resolve(root))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    if (!existsSync(fsPath)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    try {
+      const stat = statSync(fsPath);
+      if (stat.isDirectory()) {
+        rmSync(fsPath, { recursive: true });
+      } else {
+        unlinkSync(fsPath);
+      }
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: "Delete failed: " + (err instanceof Error ? err.message : String(err)) });
+    }
+  });
+
+  // --- Upload API ---
+  app.post("/__api/upload", upload.array("files"), (req, res) => {
+    const targetDir = (req.body?.path as string) || "/";
+    const overwrite = req.body?.overwrite === "true";
+    const fsDir = resolve(join(root, targetDir));
+
+    // Security: prevent path traversal
+    if (!fsDir.startsWith(resolve(root))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    if (!existsSync(fsDir) || !statSync(fsDir).isDirectory()) {
+      res.status(400).json({ error: "Target directory does not exist" });
+      return;
+    }
+
+    const files = req.files as Express.Multer.File[];
+    if (!files || files.length === 0) {
+      res.status(400).json({ error: "No files provided" });
+      return;
+    }
+
+    // Check for conflicts (only when overwrite is not set)
+    if (!overwrite) {
+      const conflicts: string[] = [];
+      for (const file of files) {
+        const dest = join(fsDir, file.originalname);
+        if (existsSync(dest)) {
+          conflicts.push(file.originalname);
+        }
+      }
+      if (conflicts.length > 0) {
+        // Clean up temp files
+        for (const file of files) {
+          try { unlinkSync(file.path); } catch {}
+        }
+        res.status(409).json({ error: "exists", conflicts });
+        return;
+      }
+    }
+
+    // Move files from temp to target
+    const uploaded: string[] = [];
+    try {
+      for (const file of files) {
+        const dest = join(fsDir, file.originalname);
+        renameSync(file.path, dest);
+        uploaded.push(file.originalname);
+      }
+      res.json({ ok: true, files: uploaded });
+    } catch (err) {
+      // Clean up remaining temp files
+      for (const file of files) {
+        try { unlinkSync(file.path); } catch {}
+      }
+      res.status(500).json({ error: "Upload failed: " + (err instanceof Error ? err.message : String(err)) });
+    }
   });
 
   // --- Download route (must be before catch-all) ---
