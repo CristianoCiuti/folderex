@@ -41,8 +41,9 @@ program
   .argument("[folder]", "Folder to share", ".")
   .option("-u, --user <username>", "Username for basic auth")
   .option("-p, --pass <password>", "Password for basic auth")
-  .option("-r, --provider <name>", "Tunnel provider: cloudflare | loophole | zrok")
-  .option("-s, --subdomain <name>", "Custom subdomain (loophole / zrok)")
+  .option("-r, --provider <name>", "Tunnel provider: cloudflare | loophole | zrok | expose")
+  .option("-s, --subdomain <name>", "Custom subdomain (loophole / zrok) or GitHub username (expose)")
+  .option("--sshkey <path>", "SSH private key for expose.sh (name or full path)")
   .option("--port <port>", "Local port (default: random available)")
   .option("--no-tunnel", "Disable tunnel, local server only")
   .action(async (folder: string, options: Record<string, unknown>) => {
@@ -54,6 +55,7 @@ program
     const providerRaw =
       (options.provider as string) || config.provider || "cloudflare";
     const subdomain = (options.subdomain as string) || config.subdomain;
+    const sshkey = (options.sshkey as string) || config.sshkey;
     const port = options.port ? parseInt(options.port as string, 10) : 0;
     const useTunnel = options.tunnel !== false;
 
@@ -72,7 +74,7 @@ program
     if (!isValidProvider(providerRaw)) {
       console.error(
         chalk.red(
-          `\n  Error: invalid provider "${providerRaw}". Use "cloudflare", "loophole", or "zrok".\n`
+          `\n  Error: invalid provider "${providerRaw}". Use "cloudflare", "loophole", "zrok", or "expose".\n`
         )
       );
       process.exit(1);
@@ -118,6 +120,7 @@ program
           port: actualPort,
           provider,
           subdomain,
+          sshkey,
         });
 
         // Clear the "Starting tunnel..." line
@@ -167,7 +170,7 @@ configCmd
     if (key === "provider" && !isValidProvider(value)) {
       console.error(
         chalk.red(
-          `\n  Error: invalid provider "${value}". Use "cloudflare", "loophole", or "zrok".\n`
+          `\n  Error: invalid provider "${value}". Use "cloudflare", "loophole", "zrok", or "expose".\n`
         )
       );
       process.exit(1);
