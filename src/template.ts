@@ -127,8 +127,16 @@ function svgIcon(type: string): string {
   return icons[type] || icons.file;
 }
 
+function actionIcons(): { share: string; download: string } {
+  return {
+    share: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
+    download: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+  };
+}
+
 export function renderDirectory(options: RenderOptions): string {
-  const { entries, breadcrumbs } = options;
+  const { entries, path: currentPath, breadcrumbs } = options;
+  const icons = actionIcons();
 
   const breadcrumbHtml = breadcrumbs
     .map(
@@ -149,19 +157,29 @@ export function renderDirectory(options: RenderOptions): string {
       const dateStr = formatDate(entry.modified);
       const cls = entry.isDirectory ? "dir" : "file";
 
+      // Build full resource path for share/download
+      const resourcePath = currentPath === "/"
+        ? `/${encodeURIComponent(entry.name)}${entry.isDirectory ? "/" : ""}`
+        : `${currentPath}${encodeURIComponent(entry.name)}${entry.isDirectory ? "/" : ""}`;
+      const downloadPath = `/__download${currentPath}${encodeURIComponent(entry.name)}${entry.isDirectory ? "/" : ""}`;
+
       return `
       <tr class="entry ${cls}">
         <td class="col-icon">${icon}</td>
         <td class="col-name"><a href="${href}">${entry.name}</a></td>
         <td class="col-size">${sizeStr}</td>
         <td class="col-date">${dateStr}</td>
+        <td class="col-actions">
+          <button class="btn-action btn-share" title="Copy link" onclick="shareUrl('${resourcePath.replace(/'/g, "\\'")}')">${icons.share}</button>
+          <a class="btn-action btn-download" title="Download" href="${downloadPath}">${icons.download}</a>
+        </td>
       </tr>`;
     })
     .join("\n");
 
   const empty =
     entries.length === 0
-      ? `<tr><td colspan="4" class="empty">This folder is empty</td></tr>`
+      ? `<tr><td colspan="5" class="empty">This folder is empty</td></tr>`
       : "";
 
   return `<!DOCTYPE html>
@@ -323,6 +341,37 @@ export function renderDirectory(options: RenderOptions): string {
       width: 160px;
     }
 
+    .col-actions {
+      width: 80px;
+      white-space: nowrap;
+      text-align: right;
+    }
+
+    .btn-action {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px;
+      height: 30px;
+      border: none;
+      background: transparent;
+      color: var(--text-dim);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      text-decoration: none;
+      vertical-align: middle;
+    }
+
+    .btn-action:hover {
+      background: var(--border);
+      color: var(--text);
+    }
+
+    .btn-share.copied {
+      color: var(--green);
+    }
+
     .icon {
       display: block;
     }
@@ -344,6 +393,104 @@ export function renderDirectory(options: RenderOptions): string {
       color: var(--text-dim);
     }
 
+    /* --- Shared Clipboard --- */
+    .clipboard-section {
+      margin-top: 24px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .clipboard-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .clipboard-header:hover {
+      background: var(--hover-bg);
+    }
+
+    .clipboard-title {
+      font-size: 12px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-dim);
+    }
+
+    .clipboard-toggle {
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-left: auto;
+    }
+
+    .clipboard-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      transition: background 0.3s;
+    }
+
+    .clipboard-dot.connected {
+      background: var(--green);
+    }
+
+    .clipboard-body {
+      display: block;
+    }
+
+    .clipboard-body.collapsed {
+      display: none;
+    }
+
+    .clipboard-body textarea {
+      width: 100%;
+      min-height: 100px;
+      padding: 12px 14px;
+      background: var(--bg);
+      color: var(--text);
+      border: none;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      resize: vertical;
+      outline: none;
+    }
+
+    .clipboard-body textarea::placeholder {
+      color: var(--text-dim);
+    }
+
+    /* --- Toast notification --- */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      opacity: 0;
+      transition: transform 0.25s ease, opacity 0.25s ease;
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
     footer {
       margin-top: 24px;
       text-align: center;
@@ -354,6 +501,7 @@ export function renderDirectory(options: RenderOptions): string {
     @media (max-width: 640px) {
       .col-date { display: none; }
       .col-size { width: 80px; }
+      .col-actions { width: 60px; }
     }
   </style>
 </head>
@@ -370,6 +518,7 @@ export function renderDirectory(options: RenderOptions): string {
           <th>Name</th>
           <th style="text-align:right">Size</th>
           <th>Modified</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -377,8 +526,144 @@ export function renderDirectory(options: RenderOptions): string {
         ${empty}
       </tbody>
     </table>
+
+    <div class="clipboard-section">
+      <div class="clipboard-header" onclick="toggleClipboard()">
+        <span class="clipboard-dot" id="wsDot"></span>
+        <span class="clipboard-title">Shared Clipboard</span>
+        <span class="clipboard-toggle" id="clipToggleLabel">Hide</span>
+      </div>
+      <div class="clipboard-body" id="clipBody">
+        <textarea id="sharedClipboard" placeholder="Type here... content is shared with all connected clients in real time."></textarea>
+      </div>
+    </div>
+
     <footer>served by folderex</footer>
   </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // --- Toast ---
+    function showToast(msg) {
+      var t = document.getElementById("toast");
+      t.textContent = msg;
+      t.classList.add("show");
+      setTimeout(function() { t.classList.remove("show"); }, 1800);
+    }
+
+    // --- Share (copy URL) ---
+    function shareUrl(resourcePath) {
+      var url = location.origin + resourcePath;
+      navigator.clipboard.writeText(url).then(function() {
+        showToast("Link copied");
+      }).catch(function() {
+        // Fallback for older browsers / non-HTTPS
+        var tmp = document.createElement("input");
+        tmp.value = url;
+        document.body.appendChild(tmp);
+        tmp.select();
+        document.execCommand("copy");
+        document.body.removeChild(tmp);
+        showToast("Link copied");
+      });
+    }
+
+    // --- Clipboard toggle ---
+    function toggleClipboard() {
+      var body = document.getElementById("clipBody");
+      var label = document.getElementById("clipToggleLabel");
+      body.classList.toggle("collapsed");
+      label.textContent = body.classList.contains("collapsed") ? "Show" : "Hide";
+    }
+
+    // --- Refresh file list without full reload ---
+    function refreshFileList() {
+      fetch(location.href, { credentials: "same-origin" })
+        .then(function(res) { return res.text(); })
+        .then(function(html) {
+          var parser = new DOMParser();
+          var doc = parser.parseFromString(html, "text/html");
+          var newTbody = doc.querySelector("tbody");
+          var newBreadcrumbs = doc.querySelector(".breadcrumbs");
+          if (newTbody) {
+            document.querySelector("tbody").innerHTML = newTbody.innerHTML;
+          }
+          if (newBreadcrumbs) {
+            document.querySelector(".breadcrumbs").innerHTML = newBreadcrumbs.innerHTML;
+          }
+        })
+        .catch(function() {
+          // Fallback to full reload if fetch fails
+          location.reload();
+        });
+    }
+
+    // --- WebSocket ---
+    (function() {
+      var ta = document.getElementById("sharedClipboard");
+      var dot = document.getElementById("wsDot");
+      var ws;
+      var reconnectDelay = 1000;
+      var debounceTimer = null;
+      var ignoreNextInput = false;
+
+      function connect() {
+        var proto = location.protocol === "https:" ? "wss:" : "ws:";
+        var wsUrl = proto + "//" + location.host + "/__ws";
+
+        // Pass auth via protocol (basic auth headers not available in browser WebSocket)
+        // Instead, we send credentials as first message
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = function() {
+          dot.classList.add("connected");
+          reconnectDelay = 1000;
+        };
+
+        ws.onclose = function() {
+          dot.classList.remove("connected");
+          setTimeout(connect, reconnectDelay);
+          reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+        };
+
+        ws.onerror = function() {
+          ws.close();
+        };
+
+        ws.onmessage = function(ev) {
+          try {
+            var msg = JSON.parse(ev.data);
+            if (msg.type === "clipboard") {
+              ignoreNextInput = true;
+              // Preserve cursor position
+              var start = ta.selectionStart;
+              var end = ta.selectionEnd;
+              ta.value = msg.text;
+              ta.selectionStart = start;
+              ta.selectionEnd = end;
+              ignoreNextInput = false;
+            } else if (msg.type === "fschange") {
+              refreshFileList();
+            }
+          } catch(e) {}
+        };
+      }
+
+      // Send clipboard changes with debounce
+      ta.addEventListener("input", function() {
+        if (ignoreNextInput) return;
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(function() {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "clipboard", text: ta.value }));
+          }
+        }, 150);
+      });
+
+      connect();
+    })();
+  </script>
 </body>
 </html>`;
 }
