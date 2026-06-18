@@ -2,6 +2,7 @@ import { startCloudflareTunnel } from "./cloudflare.js";
 import { startLoopholeTunnel } from "./loophole.js";
 import { startZrokTunnel } from "./zrok.js";
 import { startExposeTunnel } from "./expose.js";
+import { startPacketriotTunnel } from "./packetriot.js";
 import type { Provider } from "./config.js";
 
 export interface TunnelOptions {
@@ -23,6 +24,9 @@ export async function startTunnel(options: TunnelOptions): Promise<string> {
 
     case "expose":
       return startExposeTunnel(port, subdomain, sshkey);
+
+    case "packetriot":
+      return startPacketriotTunnel(port);
 
     case "cloudflare":
     default:

@@ -78,7 +78,7 @@ Share the public URL with your team. They will be prompted for username and pass
 | `<folder>` | Folder to share (default: `.`) |
 | `-u, --user <name>` | Username for basic auth |
 | `-p, --pass <secret>` | Password for basic auth |
-| `-r, --provider <name>` | Tunnel provider: `cloudflare`, `loophole`, `zrok`, or `expose` |
+| `-r, --provider <name>` | Tunnel provider: `cloudflare`, `loophole`, `zrok`, `expose`, or `packetriot` |
 | `-s, --subdomain <name>` | Custom subdomain (loophole/zrok) or GitHub username (expose) |
 | `--sshkey <path>` | SSH private key for expose.sh (name or full path) |
 | `--port <n>` | Local port (default: random) |
@@ -116,7 +116,7 @@ folderex config delete subdomain
 |-----|--------|-------------|
 | `user` | any string | Default username for basic auth |
 | `pass` | any string | Default password for basic auth |
-| `provider` | `cloudflare`, `loophole`, `zrok`, `expose` | Default tunnel provider |
+| `provider` | `cloudflare`, `loophole`, `zrok`, `expose`, `packetriot` | Default tunnel provider |
 | `subdomain` | any string | Custom subdomain (loophole/zrok) or GitHub username (expose) |
 | `sshkey` | any string | SSH key name or path for expose.sh |
 
@@ -183,6 +183,21 @@ folderex ./dist
 # -> https://yourgithubuser.expos.es
 ```
 
+### Packetriot
+
+- Uses [packetriot.com](https://packetriot.com) tunnels
+- Binary is downloaded automatically and cached in `~/.folderex/bin/`
+- Persistent hostname assigned at signup: `https://yourname.pktriot.xyz`
+- Requires a free account (one-time configure)
+
+```bash
+# First time: configure (email + password)
+~/.folderex/bin/pktriot configure
+
+# Share
+folderex ./dist -r packetriot
+```
+
 ## How it works
 
 1. Starts a local Express server with basic auth and a file browser UI
@@ -203,7 +218,7 @@ The URL stays stable for the entire session. Press `Ctrl+C` to stop.
 
 - Node.js >= 18
 - Internet connection (for the tunnel)
-- Free account for loophole/zrok providers
+- Free account for loophole/zrok/packetriot providers
 - GitHub SSH keys + star for expose.sh provider
 
 ## License
