@@ -188,6 +188,8 @@ export function renderDirectory(options: RenderOptions): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>folderex</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 24 24' fill='none' stroke='%233fb950' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z'/%3E%3Cpath d='M12 11v6'/%3E%3Cpath d='M9 14l3-3 3 3'/%3E%3C/svg%3E">
+  <script>(function(){var p=localStorage.getItem("folderex-theme")||"system",t=p==="system"?(matchMedia("(prefers-color-scheme:light)").matches?"light":"dark"):p;document.documentElement.setAttribute("data-theme",t)})()</script>
   <style>
     :root {
       --bg: #0d1117;
@@ -200,6 +202,19 @@ export function renderDirectory(options: RenderOptions): string {
       --folder: #e3b341;
       --hover-bg: #1c2129;
       --green: #3fb950;
+    }
+
+    [data-theme="light"] {
+      --bg: #ffffff;
+      --surface: #f6f8fa;
+      --border: #d0d7de;
+      --text: #1f2328;
+      --text-dim: #656d76;
+      --accent: #0969da;
+      --accent-hover: #0550ae;
+      --folder: #9a6700;
+      --hover-bg: #eef1f4;
+      --green: #1a7f37;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -498,6 +513,59 @@ export function renderDirectory(options: RenderOptions): string {
       color: var(--text-dim);
     }
 
+    /* --- Theme toggle --- */
+    .header-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+    }
+
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-dim);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+
+    .theme-toggle:hover {
+      background: var(--hover-bg);
+      color: var(--text);
+      border-color: var(--text-dim);
+    }
+
+    .theme-toggle svg { display: block; }
+
+    .theme-icon { display: none; }
+    [data-theme="dark"] .theme-icon-moon { display: block; }
+    [data-theme="light"] .theme-icon-sun { display: block; }
+
+    .theme-label {
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-right: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* --- Logo icon --- */
+    .logo-wrap {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .logo-icon {
+      color: var(--green);
+      display: block;
+    }
+
     @media (max-width: 640px) {
       .col-date { display: none; }
       .col-size { width: 80px; }
@@ -508,8 +576,19 @@ export function renderDirectory(options: RenderOptions): string {
 <body>
   <div class="container">
     <header>
-      <span class="logo">folderex</span>
+      <div class="logo-wrap">
+        <svg class="logo-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><path d="M12 11v6"/><path d="M9 14l3-3 3 3"/></svg>
+        <span class="logo">folderex</span>
+      </div>
       <nav class="breadcrumbs">${breadcrumbHtml}</nav>
+      <div class="header-right">
+        <span class="theme-label" id="themeLabel"></span>
+        <button class="theme-toggle" onclick="cycleTheme()" title="Switch theme" id="themeBtn">
+          <svg class="theme-icon theme-icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="theme-icon theme-icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          <svg class="theme-icon theme-icon-system" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </button>
+      </div>
     </header>
     <table>
       <thead>
@@ -544,6 +623,46 @@ export function renderDirectory(options: RenderOptions): string {
   <div class="toast" id="toast"></div>
 
   <script>
+    // --- Theme ---
+    function getThemePref() { return localStorage.getItem("folderex-theme") || "system"; }
+
+    function applyTheme(pref) {
+      var effective = pref;
+      if (pref === "system") {
+        effective = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      }
+      document.documentElement.setAttribute("data-theme", effective);
+      // Update icon visibility: hide all, show current
+      var icons = document.querySelectorAll(".theme-icon");
+      for (var i = 0; i < icons.length; i++) icons[i].style.display = "none";
+      if (pref === "system") {
+        document.querySelector(".theme-icon-system").style.display = "block";
+      } else if (effective === "dark") {
+        document.querySelector(".theme-icon-moon").style.display = "block";
+      } else {
+        document.querySelector(".theme-icon-sun").style.display = "block";
+      }
+      // Update label
+      var labels = { dark: "Dark", light: "Light", system: "Auto" };
+      document.getElementById("themeLabel").textContent = labels[pref] || "";
+    }
+
+    function cycleTheme() {
+      var order = ["dark", "light", "system"];
+      var cur = getThemePref();
+      var next = order[(order.indexOf(cur) + 1) % order.length];
+      localStorage.setItem("folderex-theme", next);
+      applyTheme(next);
+    }
+
+    // React to OS theme changes when in system mode
+    matchMedia("(prefers-color-scheme: light)").addEventListener("change", function() {
+      if (getThemePref() === "system") applyTheme("system");
+    });
+
+    // Apply on page load
+    applyTheme(getThemePref());
+
     // --- Toast ---
     function showToast(msg) {
       var t = document.getElementById("toast");
