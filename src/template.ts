@@ -833,12 +833,16 @@ export function renderDirectory(options: RenderOptions): string {
       document.getElementById("fileInput").click();
     }
 
-    function uploadFiles(files, overwrite) {
+    function uploadFiles(files, overwrite, pendingToken) {
       var fd = new FormData();
       fd.append("path", currentPath);
       if (overwrite) fd.append("overwrite", "true");
-      for (var i = 0; i < files.length; i++) {
-        fd.append("files", files[i]);
+      if (pendingToken) {
+        fd.append("pendingToken", pendingToken);
+      } else {
+        for (var i = 0; i < files.length; i++) {
+          fd.append("files", files[i]);
+        }
       }
       fetch("/__api/upload", { method: "POST", body: fd })
         .then(function(res) {
@@ -846,7 +850,7 @@ export function renderDirectory(options: RenderOptions): string {
             return res.json().then(function(data) {
               var names = data.conflicts.join(", ");
               if (confirm(names + " already exist(s). Overwrite?")) {
-                uploadFiles(files, true);
+                uploadFiles(null, true, data.pendingToken);
               }
               return null;
             });
@@ -867,7 +871,7 @@ export function renderDirectory(options: RenderOptions): string {
 
     document.getElementById("fileInput").addEventListener("change", function(e) {
       var files = e.target.files;
-      if (files.length > 0) uploadFiles(files, false);
+      if (files.length > 0) uploadFiles(files, false, null);
       e.target.value = "";
     });
 
@@ -897,7 +901,7 @@ export function renderDirectory(options: RenderOptions): string {
         dragCount = 0;
         overlay.classList.remove("active");
         var files = e.dataTransfer.files;
-        if (files.length > 0) uploadFiles(files, false);
+        if (files.length > 0) uploadFiles(files, false, null);
       });
     })();
 

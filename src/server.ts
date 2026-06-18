@@ -1,7 +1,9 @@
 import express from "express";
 import { createServer } from "http";
+import { randomUUID } from "crypto";
+import { tmpdir } from "os";
 import { resolve, join, relative, extname, basename } from "path";
-import { readdirSync, statSync, existsSync, watch, unlinkSync, rmSync, renameSync } from "fs";
+import { readdirSync, statSync, existsSync, watch, unlinkSync, rmSync, renameSync, mkdirSync, copyFileSync } from "fs";
 import mime from "mime-types";
 import { WebSocketServer, WebSocket } from "ws";
 import { ZipArchive } from "archiver";
@@ -102,8 +104,31 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
   // JSON body parser (for delete API)
   app.use(express.json());
 
-  // --- Multer for file uploads (temp storage, then move to target) ---
-  const upload = multer({ dest: join(root, ".folderex-uploads-tmp") });
+  // --- Multer for file uploads (temp in system temp dir) ---
+  const uploadTmpDir = join(tmpdir(), "folderex-uploads");
+  mkdirSync(uploadTmpDir, { recursive: true });
+  const upload = multer({ dest: uploadTmpDir });
+
+  // Pending uploads waiting for overwrite confirmation
+  // token -> { files: [{tmpPath, originalname}], targetDir, expires }
+  const pendingUploads = new Map<string, {
+    files: { tmpPath: string; originalname: string }[];
+    targetDir: string;
+    expires: number;
+  }>();
+
+  // Clean expired pending uploads every 60s
+  setInterval(() => {
+    const now = Date.now();
+    for (const [token, pending] of pendingUploads) {
+      if (pending.expires < now) {
+        for (const f of pending.files) {
+          try { unlinkSync(f.tmpPath); } catch {}
+        }
+        pendingUploads.delete(token);
+      }
+    }
+  }, 60_000);
 
   // --- Delete API ---
   app.delete("/__api/delete", (req, res) => {
@@ -143,6 +168,7 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
   app.post("/__api/upload", upload.array("files"), (req, res) => {
     const targetDir = (req.body?.path as string) || "/";
     const overwrite = req.body?.overwrite === "true";
+    const pendingToken = req.body?.pendingToken as string | undefined;
     const fsDir = resolve(join(root, targetDir));
 
     // Security: prevent path traversal
@@ -156,13 +182,44 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
       return;
     }
 
+    // --- Overwrite retry via pending token (no re-upload needed) ---
+    if (overwrite && pendingToken) {
+      const pending = pendingUploads.get(pendingToken);
+      if (!pending) {
+        res.status(400).json({ error: "Upload expired, please try again" });
+        return;
+      }
+      pendingUploads.delete(pendingToken);
+
+      const uploaded: string[] = [];
+      try {
+        for (const f of pending.files) {
+          const dest = join(pending.targetDir, f.originalname);
+          try {
+            copyFileSync(f.tmpPath, dest);
+          } finally {
+            try { unlinkSync(f.tmpPath); } catch {}
+          }
+          uploaded.push(f.originalname);
+        }
+        res.json({ ok: true, files: uploaded });
+      } catch (err) {
+        for (const f of pending.files) {
+          try { unlinkSync(f.tmpPath); } catch {}
+        }
+        res.status(500).json({ error: "Upload failed: " + (err instanceof Error ? err.message : String(err)) });
+      }
+      return;
+    }
+
+    // --- Normal upload ---
     const files = req.files as Express.Multer.File[];
     if (!files || files.length === 0) {
       res.status(400).json({ error: "No files provided" });
       return;
     }
 
-    // Check for conflicts (only when overwrite is not set)
+    // Check for conflicts
     if (!overwrite) {
       const conflicts: string[] = [];
       for (const file of files) {
@@ -172,11 +229,14 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
         }
       }
       if (conflicts.length > 0) {
-        // Clean up temp files
-        for (const file of files) {
-          try { unlinkSync(file.path); } catch {}
-        }
-        res.status(409).json({ error: "exists", conflicts });
+        // Keep temp files and issue a token for retry
+        const token = randomUUID();
+        pendingUploads.set(token, {
+          files: files.map(f => ({ tmpPath: f.path, originalname: f.originalname })),
+          targetDir: fsDir,
+          expires: Date.now() + 5 * 60_000, // 5 minutes
+        });
+        res.status(409).json({ error: "exists", conflicts, pendingToken: token });
         return;
       }
     }
@@ -186,7 +246,13 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
     try {
       for (const file of files) {
         const dest = join(fsDir, file.originalname);
-        renameSync(file.path, dest);
+        try {
+          renameSync(file.path, dest);
+        } catch {
+          // rename fails across devices, fall back to copy+delete
+          copyFileSync(file.path, dest);
+          unlinkSync(file.path);
+        }
         uploaded.push(file.originalname);
       }
       res.json({ ok: true, files: uploaded });
