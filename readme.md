@@ -2,7 +2,7 @@
 
 Share any local folder via a public HTTPS URL with basic auth protection.
 
-Launches a local file browser server and exposes it through a tunnel provider (Cloudflare, Loophole, zrok, or Expose.sh), giving you an instant public HTTPS URL. No infrastructure needed.
+Launches a local file browser server and exposes it through a tunnel provider (Cloudflare, Loophole, zrok, Expose.sh or Packetriot), giving you an instant public HTTPS URL. No infrastructure needed.
 
 ## Install
 
