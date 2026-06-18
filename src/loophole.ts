@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, createWriteStream, chmodSync } from "fs";
 import { join } from "path";
 import { homedir, platform, arch } from "os";
 import https from "https";
+import { extractTarGz, extractZip } from "./extract.js";
 
 const LOOPHOLE_DIR = join(homedir(), ".folderex", "bin");
 const LOOPHOLE_VERSION = "1.0.0-beta.15";
@@ -89,12 +90,10 @@ async function ensureLoophole(): Promise<string> {
 
   mkdirSync(LOOPHOLE_DIR, { recursive: true });
 
-  const { execSync } = await import("child_process");
-
   if (archiveType === "tar.gz") {
     const archivePath = join(LOOPHOLE_DIR, "loophole.tar.gz");
     await downloadFile(url, archivePath);
-    execSync(`tar -xzf "${archivePath}" -C "${LOOPHOLE_DIR}"`, { stdio: "pipe" });
+    await extractTarGz(archivePath, LOOPHOLE_DIR);
 
     try {
       const { unlinkSync } = await import("fs");
@@ -104,11 +103,7 @@ async function ensureLoophole(): Promise<string> {
     // zip (Windows)
     const archivePath = join(LOOPHOLE_DIR, "loophole.zip");
     await downloadFile(url, archivePath);
-    // Use PowerShell to extract on Windows
-    execSync(
-      `powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${LOOPHOLE_DIR}' -Force"`,
-      { stdio: "pipe" }
-    );
+    extractZip(archivePath, LOOPHOLE_DIR);
 
     try {
       const { unlinkSync } = await import("fs");

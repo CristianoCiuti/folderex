@@ -41,8 +41,8 @@ program
   .argument("[folder]", "Folder to share", ".")
   .option("-u, --user <username>", "Username for basic auth")
   .option("-p, --pass <password>", "Password for basic auth")
-  .option("-r, --provider <name>", "Tunnel provider: cloudflare | loophole")
-  .option("-s, --subdomain <name>", "Custom subdomain (loophole only)")
+  .option("-r, --provider <name>", "Tunnel provider: cloudflare | loophole | zrok")
+  .option("-s, --subdomain <name>", "Custom subdomain (loophole / zrok)")
   .option("--port <port>", "Local port (default: random available)")
   .option("--no-tunnel", "Disable tunnel, local server only")
   .action(async (folder: string, options: Record<string, unknown>) => {
@@ -72,7 +72,7 @@ program
     if (!isValidProvider(providerRaw)) {
       console.error(
         chalk.red(
-          `\n  Error: invalid provider "${providerRaw}". Use "cloudflare" or "loophole".\n`
+          `\n  Error: invalid provider "${providerRaw}". Use "cloudflare", "loophole", or "zrok".\n`
         )
       );
       process.exit(1);
@@ -167,7 +167,7 @@ configCmd
     if (key === "provider" && !isValidProvider(value)) {
       console.error(
         chalk.red(
-          `\n  Error: invalid provider "${value}". Use "cloudflare" or "loophole".\n`
+          `\n  Error: invalid provider "${value}". Use "cloudflare", "loophole", or "zrok".\n`
         )
       );
       process.exit(1);

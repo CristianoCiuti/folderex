@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, createWriteStream, chmodSync } from "fs";
 import { join } from "path";
 import { homedir, platform, arch } from "os";
 import https from "https";
+import { extractTarGz } from "./extract.js";
 
 const CLOUDFLARED_DIR = join(homedir(), ".folderex", "bin");
 
@@ -81,9 +82,7 @@ async function ensureCloudflared(): Promise<string> {
     const tgzPath = join(CLOUDFLARED_DIR, "cloudflared.tgz");
     await downloadFile(url, tgzPath);
 
-    // Extract using tar
-    const { execSync } = await import("child_process");
-    execSync(`tar -xzf "${tgzPath}" -C "${CLOUDFLARED_DIR}"`, { stdio: "pipe" });
+    await extractTarGz(tgzPath, CLOUDFLARED_DIR);
 
     // Clean up
     const { unlinkSync } = await import("fs");
