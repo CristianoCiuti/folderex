@@ -2,7 +2,7 @@
 
 Share any local folder via a public HTTPS URL with basic auth protection.
 
-Launches a local file browser server and exposes it through a tunnel provider (Cloudflare, Loophole, zrok, Expose.sh or Packetriot), giving you an instant public HTTPS URL. No infrastructure needed.
+Launches a local file browser server and exposes it through a tunnel provider (Cloudflare, Loophole, zrok, Expose.sh, srv.us or Packetriot), giving you an instant public HTTPS URL. No infrastructure needed.
 
 ## Install
 
@@ -78,9 +78,9 @@ Share the public URL with your team. They will be prompted for username and pass
 | `<folder>` | Folder to share (default: `.`) |
 | `-u, --user <name>` | Username for basic auth |
 | `-p, --pass <secret>` | Password for basic auth |
-| `-r, --provider <name>` | Tunnel provider: `cloudflare`, `loophole`, `zrok`, `expose`, or `packetriot` |
-| `-s, --subdomain <name>` | Custom subdomain (loophole/zrok) or GitHub username (expose) |
-| `--sshkey <path>` | SSH private key for expose.sh (name or full path) |
+| `-r, --provider <name>` | Tunnel provider: `cloudflare`, `loophole`, `zrok`, `expose`, `packetriot`, or `srvus` |
+| `-s, --subdomain <name>` | Custom subdomain (loophole/zrok) or GitHub username (expose/srvus) |
+| `--sshkey <path>` | SSH private key for expose.sh / srv.us (name or full path) |
 | `--port <n>` | Local port (default: random) |
 | `--no-tunnel` | Local server only, no public URL |
 | `-V, --version` | Show version |
@@ -116,9 +116,9 @@ folderex config delete subdomain
 |-----|--------|-------------|
 | `user` | any string | Default username for basic auth |
 | `pass` | any string | Default password for basic auth |
-| `provider` | `cloudflare`, `loophole`, `zrok`, `expose`, `packetriot` | Default tunnel provider |
-| `subdomain` | any string | Custom subdomain (loophole/zrok) or GitHub username (expose) |
-| `sshkey` | any string | SSH key name or path for expose.sh |
+| `provider` | `cloudflare`, `loophole`, `zrok`, `expose`, `packetriot`, `srvus` | Default tunnel provider |
+| `subdomain` | any string | Custom subdomain (loophole/zrok) or GitHub username (expose/srvus) |
+| `sshkey` | any string | SSH key name or path for expose.sh / srv.us |
 
 CLI flags always override saved config values.
 
@@ -198,10 +198,27 @@ folderex ./dist
 folderex ./dist -r packetriot
 ```
 
+### srv.us
+
+- Uses [srv.us](https://srv.us) tunnels via SSH
+- No binary to install, no account needed — uses your system SSH client
+- URL derived from your SSH key; if the key is on GitHub you also get: `https://yourusername.gh.srv.us`
+
+```bash
+# Setup
+folderex config set provider srvus
+folderex config set subdomain YourGithubUser
+folderex config set sshkey id_personal
+
+# Share
+folderex ./dist
+# -> https://yourgithubuser.gh.srv.us
+```
+
 ## How it works
 
 1. Starts a local Express server with basic auth and a file browser UI
-2. Downloads the tunnel binary if needed (cached in `~/.folderex/bin/`), or uses SSH for expose.sh
+2. Downloads the tunnel binary if needed (cached in `~/.folderex/bin/`), or uses SSH for expose.sh / srv.us
 3. Opens a tunnel to expose the local server on a public HTTPS URL
 4. Prints the URL, ready to share
 
@@ -219,7 +236,8 @@ The URL stays stable for the entire session. Press `Ctrl+C` to stop.
 - Node.js >= 18
 - Internet connection (for the tunnel)
 - Free account for loophole/zrok/packetriot providers
-- GitHub SSH keys + star for expose.sh provider
+- GitHub SSH keys for expose.sh / srv.us provider
+- Github star for expose.sh provider
 
 ## License
 

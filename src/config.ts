@@ -5,7 +5,7 @@ import { homedir } from "os";
 const CONFIG_DIR = join(homedir(), ".folderex", "conf");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
-export type Provider = "cloudflare" | "loophole" | "zrok" | "expose" | "packetriot";
+export type Provider = "cloudflare" | "loophole" | "zrok" | "expose" | "packetriot" | "srvus";
 
 export interface WebnowConfig {
   user?: string;
@@ -24,7 +24,7 @@ export function isValidKey(key: string): key is ConfigKey {
 }
 
 export function isValidProvider(value: string): value is Provider {
-  return value === "cloudflare" || value === "loophole" || value === "zrok" || value === "expose" || value === "packetriot";
+  return value === "cloudflare" || value === "loophole" || value === "zrok" || value === "expose" || value === "packetriot" || value === "srvus";
 }
 
 export function getValidKeys(): readonly string[] {
