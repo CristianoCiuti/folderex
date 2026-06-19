@@ -1,4 +1,4 @@
-import { useState, useEffect } from "preact/hooks";
+import { useState, useEffect, useRef } from "preact/hooks";
 import { useOperations } from "../hooks/useOperations";
 import type { Operation } from "../hooks/useOperations";
 
@@ -121,21 +121,42 @@ function OperationRow({ op, onCancel }: { op: Operation; onCancel: (id: string) 
   );
 }
 
-export function OperationsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function OperationsPanel() {
   const { operations, cancelOperation, clearCompleted } = useOperations();
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const activeOps = operations.filter((op) => op.status === "active");
   const completedOps = operations.filter((op) => op.status !== "active");
   const hasOps = operations.length > 0;
 
-  // Auto-open when a new active operation starts
-  // (The parent controls open state, but we don't force it here)
+  // Communicate panel height to CSS via custom property on <html>
+  useEffect(() => {
+    const update = () => {
+      const h = panelRef.current ? panelRef.current.offsetHeight : 0;
+      document.documentElement.style.setProperty("--ops-panel-h", `${h}px`);
+    };
+    update();
+    // Re-measure after expand/collapse transitions
+    const timer = setTimeout(update, 160);
+    return () => clearTimeout(timer);
+  }, [hasOps, expanded, operations.length]);
 
-  if (!open || !hasOps) return null;
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      document.documentElement.style.setProperty("--ops-panel-h", "0px");
+    };
+  }, []);
+
+  if (!hasOps) {
+    // Ensure CSS var is reset
+    document.documentElement.style.setProperty("--ops-panel-h", "0px");
+    return null;
+  }
 
   return (
-    <div class={`ops-panel${expanded ? " expanded" : ""}`}>
+    <div class={`ops-panel${expanded ? " expanded" : ""}`} ref={panelRef}>
       <div class="ops-panel-header" onClick={() => setExpanded(!expanded)}>
         <span class="ops-panel-title">
           {activeOps.length > 0
@@ -167,26 +188,5 @@ export function OperationsPanel({ open, onClose }: { open: boolean; onClose: () 
         </div>
       )}
     </div>
-  );
-}
-
-/** Toggle button for footer - shows activity indicator when ops are active */
-export function OperationsToggle({ onClick }: { onClick: () => void }) {
-  const { operations } = useOperations();
-  const activeOps = operations.filter((op) => op.status === "active");
-  const hasOps = operations.length > 0;
-
-  if (!hasOps) return null;
-
-  return (
-    <button
-      class={`btn-ops-toggle${activeOps.length > 0 ? " active" : ""}`}
-      onClick={onClick}
-      title="Operations"
-      aria-label={activeOps.length > 0 ? `${activeOps.length} operations in progress` : "View operations history"}
-    >
-      {activeOps.length > 0 && <span class="ops-toggle-spinner" />}
-      <span>{activeOps.length > 0 ? `${activeOps.length} active` : `${operations.length} ops`}</span>
-    </button>
   );
 }

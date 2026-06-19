@@ -12,6 +12,7 @@
   --danger: #f85149;
   --focus-ring: var(--accent);
   --shadow-toast: 0 4px 24px oklch(0 0 0 / 0.4);
+  --ops-panel-h: 0px;
 }
 
 [data-theme="light"] {
@@ -28,6 +29,7 @@
   --danger: #cf222e;
   --focus-ring: var(--accent);
   --shadow-toast: 0 4px 24px oklch(0 0 0 / 0.1);
+  --ops-panel-h: 0px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -54,6 +56,7 @@ body {
   max-width: 960px;
   margin: 0 auto;
   padding: 24px 16px;
+  padding-bottom: calc(24px + var(--ops-panel-h));
 }
 
 header {
@@ -523,7 +526,7 @@ td {
 /* --- Toast notification --- */
 .toast-container {
   position: fixed;
-  bottom: 24px;
+  bottom: calc(24px + var(--ops-panel-h));
   left: 50%;
   transform: translateX(-50%);
   z-index: 1000;
@@ -532,6 +535,7 @@ td {
   gap: 8px;
   align-items: center;
   pointer-events: none;
+  transition: bottom 150ms ease;
 }
 
 .toast {
@@ -620,12 +624,6 @@ footer {
   color: var(--text-dim);
 }
 
-.footer-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .btn-kb-shortcuts {
   display: inline-flex;
   align-items: center;
@@ -703,7 +701,7 @@ footer {
 /* --- Keyboard shortcut hint --- */
 .kb-hint {
   position: fixed;
-  bottom: 16px;
+  bottom: calc(16px + var(--ops-panel-h));
   right: 16px;
   font-size: 11px;
   color: var(--text-dim);
@@ -1287,42 +1285,6 @@ kbd {
   color: var(--text-dim);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-}
-
-/* Operations toggle button (footer) */
-.btn-ops-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text-dim);
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: 500;
-  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
-}
-
-.btn-ops-toggle:hover {
-  background: var(--hover-bg);
-  color: var(--text);
-  border-color: var(--text-dim);
-}
-
-.btn-ops-toggle.active {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.ops-toggle-spinner {
-  width: 10px;
-  height: 10px;
-  border: 1.5px solid var(--border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: ops-spin 600ms linear infinite;
 }
 
 /* --- Reduced motion --- */
