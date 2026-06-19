@@ -6,16 +6,21 @@ import { FilterBar } from "./FilterBar";
 import { GlobalSearch } from "./GlobalSearch";
 import { Upload } from "./Upload";
 import { Clipboard } from "./Clipboard";
+import { OperationsPanel, OperationsToggle } from "./OperationsPanel";
 import { useTheme } from "../hooks/useTheme";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useKeyboard } from "../hooks/useKeyboard";
+import { OperationsContext, useOperationsProvider, useOperations } from "../hooks/useOperations";
 import type { FileEntry, Breadcrumb, ListResponse } from "../types";
 
 export function App() {
+  const opsProvider = useOperationsProvider();
   return (
-    <ToastProvider>
-      <AppInner />
-    </ToastProvider>
+    <OperationsContext.Provider value={opsProvider}>
+      <ToastProvider>
+        <AppInner />
+      </ToastProvider>
+    </OperationsContext.Provider>
   );
 }
 
@@ -31,11 +36,19 @@ function AppInner() {
   const [filterQuery, setFilterQuery] = useState("");
   const [filterVisible, setFilterVisible] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [opsPanelOpen, setOpsPanelOpen] = useState(false);
   const filterInputRef = useRef<HTMLInputElement | null>(null);
   const clipboardRef = useRef<{ focus: () => void } | null>(null);
 
   const { pref, cycleTheme } = useTheme();
   const { showToast } = useToast();
+  const { operations, addClientOperation, updateClientOperation, completeClientOperation, handleServerOperation, handleOperationsSync } = useOperations();
+
+  // Auto-open ops panel when an operation starts
+  const activeOpsCount = operations.filter((o) => o.status === "active").length;
+  useEffect(() => {
+    if (activeOpsCount > 0) setOpsPanelOpen(true);
+  }, [activeOpsCount]);
 
   // Fetch directory listing with loading state
   const fetchList = useCallback(async (path: string, resetFocus = true) => {
@@ -100,6 +113,8 @@ function AppInner() {
   const { connected, sendClipboard } = useWebSocket({
     onClipboard: onClipboardReceived,
     onFsChange,
+    onOperation: handleServerOperation,
+    onOperationsSync: handleOperationsSync,
   });
 
   // Actions
@@ -160,7 +175,6 @@ function AppInner() {
                 .then(() => {
                   const path = decodeURIComponent(window.location.pathname);
                   fetchList(path, false).then(() => {
-                    // Restore focus to where the item was
                     if (deletedIdx >= 0) setFocusIdx(deletedIdx);
                   });
                 })
@@ -293,8 +307,11 @@ function AppInner() {
         return res.json();
       })
       .then((data) => {
-        const path = decodeURIComponent(window.location.pathname);
-        fetchList(path, false);
+        if (!data.async) {
+          // Instant clone - refresh immediately
+          const path = decodeURIComponent(window.location.pathname);
+          fetchList(path, false);
+        }
         showToast(`Created ${data.newName}`);
       })
       .catch((err) => {
@@ -446,15 +463,18 @@ function AppInner() {
 
       <footer>
         <span>served by folderex</span>
-        <button
-          class="btn-kb-shortcuts"
-          onClick={showHintPanel}
-          title="Keyboard shortcuts (?)"
-          aria-label="Show keyboard shortcuts"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/><path d="M18 8h.01"/><path d="M6 12h.01"/><path d="M18 12h.01"/><path d="M8 16h8"/></svg>
-          <span>Shortcuts</span>
-        </button>
+        <div class="footer-actions">
+          <OperationsToggle onClick={() => setOpsPanelOpen((v) => !v)} />
+          <button
+            class="btn-kb-shortcuts"
+            onClick={showHintPanel}
+            title="Keyboard shortcuts (?)"
+            aria-label="Show keyboard shortcuts"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/><path d="M18 8h.01"/><path d="M6 12h.01"/><path d="M18 12h.01"/><path d="M8 16h8"/></svg>
+            <span>Shortcuts</span>
+          </button>
+        </div>
       </footer>
 
       {/* Keyboard hint panel */}
@@ -479,6 +499,8 @@ function AppInner() {
         onClose={() => setGlobalSearchOpen(false)}
         onNavigate={navigate}
       />
+
+      <OperationsPanel open={opsPanelOpen} onClose={() => setOpsPanelOpen(false)} />
     </div>
   );
 }

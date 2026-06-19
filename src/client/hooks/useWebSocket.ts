@@ -1,11 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from "preact/hooks";
+import type { ServerOperation } from "./useOperations";
 
 interface UseWebSocketOptions {
   onClipboard: (text: string) => void;
   onFsChange: () => void;
+  onOperation: (op: ServerOperation) => void;
+  onOperationsSync: (ops: ServerOperation[]) => void;
 }
 
-export function useWebSocket({ onClipboard, onFsChange }: UseWebSocketOptions) {
+export function useWebSocket({ onClipboard, onFsChange, onOperation, onOperationsSync }: UseWebSocketOptions) {
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectDelay = useRef(1000);
@@ -39,10 +42,14 @@ export function useWebSocket({ onClipboard, onFsChange }: UseWebSocketOptions) {
           onClipboard(msg.text);
         } else if (msg.type === "fschange") {
           onFsChange();
+        } else if (msg.type === "operation") {
+          onOperation(msg.operation);
+        } else if (msg.type === "operations-sync") {
+          onOperationsSync(msg.operations);
         }
       } catch {}
     };
-  }, [onClipboard, onFsChange]);
+  }, [onClipboard, onFsChange, onOperation, onOperationsSync]);
 
   useEffect(() => {
     connect();

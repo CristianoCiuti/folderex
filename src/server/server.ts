@@ -9,6 +9,7 @@ import mime from "mime-types";
 import { WebSocketServer, WebSocket } from "ws";
 import { ZipArchive } from "archiver";
 import multer from "multer";
+import { OperationsManager } from "./operations.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -48,6 +49,10 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
   // --- WebSocket server ---
   const wss = new WebSocketServer({ server: httpServer, path: "/__ws" });
 
+  // --- Operations manager ---
+  const opsManager = new OperationsManager();
+  opsManager.setWss(wss);
+
   wss.on("connection", (ws, req) => {
     // Auth check on upgrade (skip if auth disabled)
     if (useAuth && !checkAuth(req.headers.authorization, user, pass)) {
@@ -57,6 +62,12 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
 
     // Send current clipboard state on connect
     ws.send(JSON.stringify({ type: "clipboard", text: clipboardText }));
+
+    // Send current operations state
+    const activeOps = opsManager.list();
+    if (activeOps.length > 0) {
+      ws.send(JSON.stringify({ type: "operations-sync", operations: activeOps }));
+    }
 
     ws.on("message", (raw) => {
       try {
@@ -83,6 +94,10 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
     watch(root, { recursive: true }, () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
+        // Suppress fschange while operations are running to avoid UI thrashing
+        const activeOps = opsManager.list().filter(op => op.status === "active");
+        if (activeOps.length > 0) return;
+
         const msg = JSON.stringify({ type: "fschange" });
         for (const client of wss.clients) {
           if (client.readyState === WebSocket.OPEN) {
@@ -159,7 +174,7 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
     }
   }, 30_000);
 
-  // --- Delete API (moves to trash) ---
+  // --- Delete API (moves to trash, with progress for large dirs) ---
   app.delete("/__api/delete", (req, res) => {
     const { path: rawFilePath } = req.body as { path?: string };
     if (!rawFilePath || typeof rawFilePath !== "string") {
@@ -185,31 +200,38 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
       const stat = statSync(fsPath);
       const token = randomUUID();
       const trashPath = join(trashBaseDir, token);
+      const fileName = basename(fsPath);
 
-      // Move to trash
+      // Try fast rename first (same device = instant)
       try {
         renameSync(fsPath, trashPath);
+        // Instant — track as a completed operation
+        const opId = opsManager.create("delete", `Delete ${fileName}`);
+        opsManager.complete(opId);
+        trashedItems.set(token, {
+          originalPath: fsPath,
+          trashPath,
+          isDirectory: stat.isDirectory(),
+          expires: Date.now() + 60_000,
+        });
+        res.json({ ok: true, trashToken: token, operationId: opId });
+        return;
       } catch {
-        // rename fails across devices, fall back to copy+delete
-        if (stat.isDirectory()) {
-          mkdirSync(trashPath, { recursive: true });
-          // For directories, use recursive copy via cpSync (Node 16.7+)
-          cpSync(fsPath, trashPath, { recursive: true });
-          rmSync(fsPath, { recursive: true });
-        } else {
-          copyFileSync(fsPath, trashPath);
-          unlinkSync(fsPath);
-        }
+        // Cross-device: need worker thread
       }
 
+      // Worker thread: copy to trash, then delete original
+      const opId = opsManager.runDelete(fsPath, trashPath, `Delete ${fileName}`);
+
+      // Register trash item immediately (worker will complete the operation)
       trashedItems.set(token, {
         originalPath: fsPath,
         trashPath,
         isDirectory: stat.isDirectory(),
-        expires: Date.now() + 60_000, // 60 seconds to undo
+        expires: Date.now() + 300_000, // longer timeout for async ops
       });
 
-      res.json({ ok: true, trashToken: token });
+      res.json({ ok: true, trashToken: token, operationId: opId, async: true });
     } catch (err) {
       res.status(500).json({ error: "Delete failed: " + (err instanceof Error ? err.message : String(err)) });
     }
@@ -311,7 +333,7 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
     }
   });
 
-  // --- Clone API (duplicate file/directory) ---
+  // --- Clone API (duplicate file/directory, worker thread for dirs) ---
   app.post("/__api/clone", (req, res) => {
     const { path: rawFilePath } = req.body as { path?: string };
     if (!rawFilePath || typeof rawFilePath !== "string") {
@@ -338,18 +360,16 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
     const ext = extname(originalName);
     const nameWithoutExt = ext ? originalName.slice(0, -ext.length) : originalName;
 
-    // Generate copy name: name_copy.ext, name_copy(2).ext, name_copy(3).ext...
     const generateCopyName = (): string => {
       const baseCopy = `${nameWithoutExt}_copy`;
       const firstCandidate = `${baseCopy}${ext}`;
       if (!existsSync(resolve(parentDir, firstCandidate))) return firstCandidate;
-
       let n = 2;
       while (true) {
         const candidate = `${baseCopy}(${n})${ext}`;
         if (!existsSync(resolve(parentDir, candidate))) return candidate;
         n++;
-        if (n > 1000) break; // safety
+        if (n > 1000) break;
       }
       return `${baseCopy}(${Date.now()})${ext}`;
     };
@@ -359,19 +379,76 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
 
     try {
       const stat = statSync(fsPath);
+
       if (stat.isDirectory()) {
-        cpSync(fsPath, newFsPath, { recursive: true });
+        // Worker thread for directory copy
+        const opId = opsManager.runClone(fsPath, newFsPath, `Duplicate ${originalName}`);
+        res.json({ ok: true, newName, operationId: opId, async: true });
       } else {
+        // Single file: instant
         copyFileSync(fsPath, newFsPath);
+        const opId = opsManager.create("clone", `Duplicate ${originalName}`);
+        opsManager.complete(opId);
+        res.json({ ok: true, newName, operationId: opId });
       }
-      res.json({ ok: true, newName });
     } catch (err) {
       res.status(500).json({ error: "Clone failed: " + (err instanceof Error ? err.message : String(err)) });
     }
   });
 
   // --- Upload API ---
-  app.post("/__api/upload", upload.array("files"), (req, res) => {
+  // Wrap multer to detect client abort and track as cancelled operation
+  const uploadMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    // Track abort state on the request object so the handler can check it too
+    (req as any).__uploadAborted = false;
+    (req as any).__uploadOpCreated = false;
+
+    req.on("aborted", () => {
+      (req as any).__uploadAborted = true;
+      // If the handler already created an op, mark it cancelled
+      if ((req as any).__uploadOpId) {
+        opsManager.complete((req as any).__uploadOpId, "Cancelled");
+        (req as any).__uploadOpCreated = true;
+      }
+    });
+
+    upload.array("files")(req, res, (err) => {
+      if (err) {
+        if ((req as any).__uploadAborted || err.message === "Request aborted") {
+          // Client cancelled during multer transfer
+          if (!(req as any).__uploadOpCreated) {
+            const label = (req.body?.label as string) || buildUploadLabel(req.files as Express.Multer.File[] | undefined);
+            const clientOpId = req.headers["x-op-id"] as string | undefined;
+            // Clean up any partial temp files
+            const files = req.files as Express.Multer.File[] | undefined;
+            if (files) {
+              for (const f of files) {
+                try { unlinkSync(f.path); } catch {}
+              }
+            }
+            const opId = opsManager.create("upload", label, clientOpId);
+            opsManager.complete(opId, "Cancelled");
+          }
+          return;
+        }
+        return next(err);
+      }
+      next();
+    });
+  };
+
+  function buildUploadLabel(files: Express.Multer.File[] | undefined | null): string {
+    if (!files || files.length === 0) return "Upload";
+    const name = files[0].originalname;
+    if (!name) return "Upload";
+    if (files.length === 1) return `Upload ${name}`;
+    return `Upload ${name} +${files.length - 1}`;
+  }
+
+  app.post("/__api/upload", uploadMiddleware, (req, res) => {
+    // If request was aborted after multer succeeded, don't process
+    if ((req as any).__uploadAborted) return;
+
     const rawTargetDir = (req.body?.path as string) || "/";
     const targetDir = decodeURIComponent(rawTargetDir);
     const overwrite = req.body?.overwrite === "true";
@@ -398,6 +475,12 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
       }
       pendingUploads.delete(pendingToken);
 
+      const uploadLabel = (req.body?.label as string) || (pending.files.length === 1
+        ? `Upload ${pending.files[0].originalname || "file"}`
+        : `Upload ${pending.files[0].originalname || "file"} +${pending.files.length - 1}`);
+      const clientOpId = req.headers["x-op-id"] as string | undefined;
+      const opId = opsManager.create("upload", uploadLabel, clientOpId);
+
       const uploaded: string[] = [];
       try {
         for (const f of pending.files) {
@@ -409,11 +492,13 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
           }
           uploaded.push(f.originalname);
         }
-        res.json({ ok: true, files: uploaded });
+        opsManager.complete(opId);
+        res.json({ ok: true, files: uploaded, operationId: opId });
       } catch (err) {
         for (const f of pending.files) {
           try { unlinkSync(f.tmpPath); } catch {}
         }
+        opsManager.complete(opId, err instanceof Error ? err.message : String(err));
         res.status(500).json({ error: "Upload failed: " + (err instanceof Error ? err.message : String(err)) });
       }
       return;
@@ -426,6 +511,12 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
       return;
     }
 
+    const uploadLabel = buildUploadLabel(files);
+    const clientOpId = req.headers["x-op-id"] as string | undefined;
+    const opId = opsManager.create("upload", uploadLabel, clientOpId);
+    (req as any).__uploadOpId = opId;
+    (req as any).__uploadOpCreated = true;
+
     // Check for conflicts
     if (!overwrite) {
       const conflicts: string[] = [];
@@ -436,6 +527,7 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
         }
       }
       if (conflicts.length > 0) {
+        opsManager.complete(opId, "File conflict");
         // Keep temp files and issue a token for retry
         const token = randomUUID();
         pendingUploads.set(token, {
@@ -443,13 +535,14 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
           targetDir: fsDir,
           expires: Date.now() + 5 * 60_000, // 5 minutes
         });
-        res.status(409).json({ error: "exists", conflicts, pendingToken: token });
+        res.status(409).json({ error: "exists", conflicts, pendingToken: token, operationId: opId });
         return;
       }
     }
 
     // Move files from temp to target
     const uploaded: string[] = [];
+
     try {
       for (const file of files) {
         const dest = join(fsDir, file.originalname);
@@ -462,14 +555,36 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
         }
         uploaded.push(file.originalname);
       }
-      res.json({ ok: true, files: uploaded });
+      opsManager.complete(opId);
+      res.json({ ok: true, files: uploaded, operationId: opId });
     } catch (err) {
       // Clean up remaining temp files
       for (const file of files) {
         try { unlinkSync(file.path); } catch {}
       }
+      opsManager.complete(opId, err instanceof Error ? err.message : String(err));
       res.status(500).json({ error: "Upload failed: " + (err instanceof Error ? err.message : String(err)) });
     }
+  });
+
+  // --- Operations API ---
+  app.get("/__api/operations", (_req, res) => {
+    res.json({ operations: opsManager.list() });
+  });
+
+  app.post("/__api/operations/:id/cancel", (req, res) => {
+    const { id } = req.params;
+    const cancelled = opsManager.cancel(id);
+    if (cancelled) {
+      res.json({ ok: true });
+    } else {
+      res.status(404).json({ error: "Operation not found or already completed" });
+    }
+  });
+
+  app.delete("/__api/operations", (_req, res) => {
+    opsManager.clearCompleted();
+    res.json({ ok: true });
   });
 
   // --- Search API (recursive file search with fuzzy subsequence matching) ---
@@ -726,6 +841,17 @@ export function startServer(options: ServerOptions): Promise<ServerResult> {
     }
 
     res.sendFile(fsPath, { dotfiles: "allow" });
+  });
+
+  // --- Suppress aborted request errors ---
+  app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    if (err.message === "Request aborted") {
+      // Client disconnected — already handled by upload middleware
+      return;
+    }
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   return new Promise((resolvePromise, reject) => {

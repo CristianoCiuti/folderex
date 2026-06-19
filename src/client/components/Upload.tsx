@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "preact/hooks";
 import { useToast } from "./Toast";
+import { useOperations } from "../hooks/useOperations";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -21,7 +22,6 @@ function ConfirmDialog({ open, message, confirmLabel, cancelLabel, onConfirm, on
 
   useEffect(() => {
     if (!open) return;
-    // Capture phase: block ALL other keyboard handlers while dialog is open
     const handler = (e: KeyboardEvent) => {
       e.stopPropagation();
       if (e.key === "Escape" || e.key === "n" || e.key === "N") { e.preventDefault(); onCancel(); }
@@ -56,18 +56,29 @@ interface UploadProps {
 }
 
 export function Upload({ currentPath, onUploadComplete }: UploadProps) {
-  const [progress, setProgress] = useState<{ active: boolean; pct: number; label: string }>({
-    active: false, pct: 0, label: "Uploading...",
-  });
   const [dragActive, setDragActive] = useState(false);
   const [overwriteDialog, setOverwriteDialog] = useState<{ names: string[]; pendingToken: string } | null>(null);
   const dragCount = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { showToast } = useToast();
+  const { addClientOperation, updateClientOperation, completeClientOperation } = useOperations();
 
-  const uploadFiles = useCallback((files: FileList | null, overwrite: boolean, pendingToken: string | null) => {
+  const uploadFiles = useCallback((files: FileList | null, overwrite: boolean, pendingToken: string | null, overrideLabel?: string) => {
+    const fileCount = files ? files.length : 0;
+    let label: string;
+    if (overrideLabel) {
+      label = overrideLabel;
+    } else if (files && fileCount === 1) {
+      label = `Upload ${files[0].name}`;
+    } else if (files && fileCount > 1) {
+      label = `Upload ${files[0].name} +${fileCount - 1}`;
+    } else {
+      label = "Upload";
+    }
+
     const fd = new FormData();
     fd.append("path", currentPath);
+    fd.append("label", label);
     if (overwrite) fd.append("overwrite", "true");
     if (pendingToken) {
       fd.append("pendingToken", pendingToken);
@@ -77,56 +88,68 @@ export function Upload({ currentPath, onUploadComplete }: UploadProps) {
       }
     }
 
-    const fileCount = files ? files.length : 0;
-    const label = fileCount > 0
-      ? `Uploading ${fileCount} file${fileCount > 1 ? "s" : ""}...`
-      : "Uploading...";
-    setProgress({ active: true, pct: 0, label });
-
     const xhr = new XMLHttpRequest();
+
+    const opId = addClientOperation({
+      type: "upload",
+      label,
+      status: "active",
+      progress: 0,
+      abort: () => {
+        xhr.abort();
+      },
+    });
+
     xhr.open("POST", "/__api/upload");
+    xhr.setRequestHeader("X-Op-Id", opId);
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) {
-        setProgress({ active: true, pct: (e.loaded / e.total) * 100, label });
+        updateClientOperation(opId, { progress: (e.loaded / e.total) * 100 });
       }
     };
 
     xhr.onload = () => {
-      setProgress({ active: false, pct: 0, label: "" });
       if (xhr.status === 409) {
         const data = JSON.parse(xhr.responseText);
+        // Server already registered this as "File conflict" with same opId
         setOverwriteDialog({ names: data.conflicts, pendingToken: data.pendingToken });
         return;
       }
       if (xhr.status >= 400) {
         try {
           const err = JSON.parse(xhr.responseText);
-          showToast(`Error: ${err.error || "Upload failed"}`);
+          completeClientOperation(opId, err.error || "Upload failed");
         } catch {
-          showToast("Error: Upload failed");
+          completeClientOperation(opId, "Upload failed");
         }
         return;
       }
       const data = JSON.parse(xhr.responseText);
       if (data && data.ok) {
+        // Server op with same ID will arrive via WebSocket and replace this one
         showToast(`${data.files.length} file${data.files.length > 1 ? "s" : ""} uploaded`);
         onUploadComplete();
       }
     };
 
     xhr.onerror = () => {
-      setProgress({ active: false, pct: 0, label: "" });
-      showToast("Error: Upload failed (network error)");
+      completeClientOperation(opId, "Network error");
+    };
+
+    xhr.onabort = () => {
+      // Already handled by the abort callback
     };
 
     xhr.send(fd);
-  }, [currentPath, showToast, onUploadComplete]);
+  }, [currentPath, showToast, onUploadComplete, addClientOperation, updateClientOperation, completeClientOperation]);
 
   const handleOverwriteConfirm = useCallback(() => {
     if (!overwriteDialog) return;
+    const names = overwriteDialog.names;
+    const label = names.length === 1 ? `Upload ${names[0]}` : `Upload ${names[0]} +${names.length - 1}`;
     setOverwriteDialog(null);
-    uploadFiles(null, true, overwriteDialog.pendingToken);
+    uploadFiles(null, true, overwriteDialog.pendingToken, label);
   }, [overwriteDialog, uploadFiles]);
 
   const handleOverwriteCancel = useCallback(() => {
@@ -145,7 +168,7 @@ export function Upload({ currentPath, onUploadComplete }: UploadProps) {
     input.value = "";
   }, [uploadFiles]);
 
-  // Drag and drop handlers - attached to document
+  // Drag and drop handlers
   useEffect(() => {
     const onDragEnter = (e: DragEvent) => {
       e.preventDefault();
@@ -205,17 +228,6 @@ export function Upload({ currentPath, onUploadComplete }: UploadProps) {
         aria-hidden="true"
         onChange={handleFileChange}
       />
-
-      {/* Upload progress */}
-      <div class={`upload-progress${progress.active ? " active" : ""}`} role="status" aria-live="polite">
-        <div class="upload-progress-label">
-          <span>{progress.label}</span>
-          <span>{Math.round(progress.pct)}%</span>
-        </div>
-        <div class="upload-progress-bar">
-          <div class="upload-progress-fill" style={`width:${progress.pct}%`}></div>
-        </div>
-      </div>
 
       {/* Drop overlay */}
       <div class={`drop-overlay${dragActive ? " active" : ""}`} aria-hidden="true">
