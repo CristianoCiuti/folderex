@@ -1,6 +1,6 @@
 {
   "name": "folderex",
-  "version": "1.1.4",
+  "version": "2.0.0",
   "description": "Share any local folder via a public HTTPS URL with basic auth protection",
   "main": "dist/index.js",
   "bin": {
