@@ -55,7 +55,6 @@ export class OperationsManager {
   private ops = new Map<string, InternalOp>();
   private wss: WebSocketServer | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
-  private maxHistory = 50;
 
   setWss(wss: WebSocketServer) {
     this.wss = wss;
@@ -117,7 +116,6 @@ export class OperationsManager {
     this.broadcast(op);
     this.startWorker(op, { task: "clone", src, dest });
     this.ensurePolling();
-    this.pruneHistory();
     return id;
   }
 
@@ -147,7 +145,6 @@ export class OperationsManager {
     this.broadcast(op);
     this.startWorker(op, { task: "delete", src, trashDest });
     this.ensurePolling();
-    this.pruneHistory();
     return id;
   }
 
@@ -165,7 +162,6 @@ export class OperationsManager {
     };
     this.ops.set(opId, op);
     this.broadcast(op);
-    this.pruneHistory();
     return opId;
   }
 
@@ -280,16 +276,6 @@ export class OperationsManager {
       if ((client as WebSocket).readyState === 1) {
         client.send(msg);
       }
-    }
-  }
-
-  private pruneHistory() {
-    const completed = Array.from(this.ops.entries())
-      .filter(([, op]) => op.status !== "active")
-      .sort(([, a], [, b]) => (a.completedAt || 0) - (b.completedAt || 0));
-    while (completed.length > this.maxHistory) {
-      const [id] = completed.shift()!;
-      this.ops.delete(id);
     }
   }
 }
