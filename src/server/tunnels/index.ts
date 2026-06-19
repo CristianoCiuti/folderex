@@ -4,7 +4,7 @@ import { startZrokTunnel } from "./zrok.js";
 import { startExposeTunnel } from "./expose.js";
 import { startPacketriotTunnel } from "./packetriot.js";
 import { startSrvusTunnel } from "./srvus.js";
-import type { Provider } from "./config.js";
+import type { Provider } from "../config.js";
 
 export interface TunnelOptions {
   port: number;

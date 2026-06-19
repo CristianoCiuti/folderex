@@ -2,7 +2,7 @@
 
 import { Command } from "commander";
 import { startServer } from "./server.js";
-import { startTunnel } from "./tunnel.js";
+import { startTunnel } from "./tunnels/index.js";
 import {
   getConfig,
   getConfigValue,
@@ -31,7 +31,7 @@ const program = new Command();
 program
   .name("folderex")
   .description(
-    "Share any local folder via a public HTTPS URL with basic auth protection"
+    "Share any local folder via a public HTTPS URL"
   )
   .version(pkg.version);
 
@@ -41,46 +41,37 @@ program
   .argument("[folder]", "Folder to share", ".")
   .option("-u, --user <username>", "Username for basic auth")
   .option("-p, --pass <password>", "Password for basic auth")
-  .option("-r, --provider <name>", "Tunnel provider: cloudflare | loophole | zrok | expose | packetriot | srvus")
-  .option("-s, --subdomain <name>", "Custom subdomain (loophole / zrok) or GitHub username (expose)")
-  .option("--sshkey <path>", "SSH private key for expose.sh (name or full path)")
-  .option("--port <port>", "Local port (default: random available)")
-  .option("--no-tunnel", "Disable tunnel, local server only")
+  .option("-t, --tunnel <provider>", "Tunnel provider: cloudflare | loophole | zrok | expose | packetriot | srvus")
+  .option("-s, --subdomain <name>", "Custom subdomain or GitHub username")
+  .option("-k, --sshkey <path>", "SSH private key (name or full path)")
+  .option("-P, --port <port>", "Local port (default: random available)")
+  .option("-L, --local", "Disable tunnel, local server only")
   .action(async (folder: string, options: Record<string, unknown>) => {
     const config = getConfig();
 
     // Resolve with config fallback
-    const user = (options.user as string) || config.user;
-    const pass = (options.pass as string) || config.pass;
-    const providerRaw =
-      (options.provider as string) || config.provider || "cloudflare";
+    const user = (options.user as string) || config.user || undefined;
+    const pass = (options.pass as string) || config.pass || undefined;
+    const tunnelRaw =
+      (options.tunnel as string) || config.tunnel || "cloudflare";
     const subdomain = (options.subdomain as string) || config.subdomain;
     const sshkey = (options.sshkey as string) || config.sshkey;
-    const port = options.port ? parseInt(options.port as string, 10) : 0;
-    const useTunnel = options.tunnel !== false;
-
-    // Validate required fields
-    if (!user || !pass) {
-      console.error(
-        chalk.red(
-          "\n  Error: user and password are required.\n" +
-            "  Provide them via -u/-p flags or save them with: folderex config set user <value>\n"
-        )
-      );
-      process.exit(1);
-    }
+    const portRaw = (options.port as string) || config.port;
+    const port = portRaw ? parseInt(portRaw, 10) : 0;
+    const localOnly = options.local === true;
 
     // Validate provider
-    if (!isValidProvider(providerRaw)) {
+    if (!isValidProvider(tunnelRaw)) {
       console.error(
         chalk.red(
-          `\n  Error: invalid provider "${providerRaw}". Use "cloudflare", "loophole", "zrok", "expose", "packetriot", or "srvus".\n`
+          `\n  Error: invalid tunnel provider "${tunnelRaw}".\n` +
+            `  Valid providers: cloudflare, loophole, zrok, expose, packetriot, srvus\n`
         )
       );
       process.exit(1);
     }
 
-    const provider = providerRaw as Provider;
+    const provider = tunnelRaw as Provider;
     const root = resolve(folder);
 
     if (!existsSync(root)) {
@@ -95,25 +86,24 @@ program
       process.exit(1);
     }
 
-    console.log("");
-    console.log(chalk.bold("  folderex"));
-    console.log(chalk.dim(`  Sharing:  ${root}`));
-    console.log(chalk.dim(`  Provider: ${provider}`));
-    console.log("");
+    // Determine if auth is enabled
+    const useAuth = !!(user && pass);
 
     try {
       const { url: localUrl, port: actualPort } = await startServer({
         root,
-        user,
-        pass,
+        user: user || "",
+        pass: pass || "",
         port,
       });
 
-      console.log(
-        chalk.green("  * ") + `Local server:  ${chalk.underline(localUrl)}`
-      );
+      // ── Startup summary ──────────────────────────────────────────
+      console.log("");
+      console.log(chalk.bold("  folderex"));
+      console.log("");
+      console.log(chalk.green("  * ") + `Local:     ${chalk.underline(localUrl)}`);
 
-      if (useTunnel) {
+      if (!localOnly) {
         console.log(chalk.dim("  - Starting tunnel..."));
 
         const publicUrl = await startTunnel({
@@ -128,14 +118,25 @@ program
 
         console.log(
           chalk.green("  * ") +
-            `Public URL:    ${chalk.bold.underline(publicUrl)}`
+            `Public:    ${chalk.bold.underline(publicUrl)}`
         );
       }
 
       console.log("");
-      console.log(
-        chalk.dim(`  Auth: ${user} / ${"*".repeat(pass.length)}`)
-      );
+      console.log(chalk.dim("  ─────────────────────────────────────"));
+      console.log(chalk.dim(`  Folder:    ${root}`));
+      console.log(chalk.dim(`  Port:      ${actualPort}`));
+      console.log(chalk.dim(`  Tunnel:    ${localOnly ? "disabled" : provider}`));
+      if (subdomain) {
+        console.log(chalk.dim(`  Subdomain: ${subdomain}`));
+      }
+      if (useAuth) {
+        console.log(chalk.dim(`  Auth:      ${user} / ${"*".repeat(pass!.length)}`));
+      } else {
+        console.log(chalk.dim(`  Auth:      ${chalk.yellow("disabled (no credentials)")}`));
+      }
+      console.log(chalk.dim("  ─────────────────────────────────────"));
+      console.log("");
       console.log(chalk.dim("  Press Ctrl+C to stop"));
       console.log("");
     } catch (err: unknown) {
@@ -167,10 +168,11 @@ configCmd
       process.exit(1);
     }
 
-    if (key === "provider" && !isValidProvider(value)) {
+    if (key === "tunnel" && !isValidProvider(value)) {
       console.error(
         chalk.red(
-          `\n  Error: invalid provider "${value}". Use "cloudflare", "loophole", "zrok", "expose", "packetriot", or "srvus".\n`
+          `\n  Error: invalid tunnel provider "${value}".\n` +
+            `  Valid providers: cloudflare, loophole, zrok, expose, packetriot, srvus\n`
         )
       );
       process.exit(1);

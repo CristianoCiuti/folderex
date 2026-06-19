@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, createWriteStream, chmodSync } from "fs";
 import { join } from "path";
 import { homedir, platform, arch } from "os";
 import https from "https";
-import { extractTarGz } from "./extract.js";
+import { extractTarGz } from "../utils/extract.js";
 
 const CLOUDFLARED_DIR = join(homedir(), ".folderex", "bin");
 

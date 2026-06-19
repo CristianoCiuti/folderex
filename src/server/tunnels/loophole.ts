@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, createWriteStream, chmodSync } from "fs";
 import { join } from "path";
 import { homedir, platform, arch } from "os";
 import https from "https";
-import { extractTarGz, extractZip } from "./extract.js";
+import { extractTarGz, extractZip } from "../utils/extract.js";
 
 const LOOPHOLE_DIR = join(homedir(), ".folderex", "bin");
 const LOOPHOLE_VERSION = "1.0.0-beta.15";

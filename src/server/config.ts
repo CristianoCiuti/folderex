@@ -7,16 +7,17 @@ const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
 export type Provider = "cloudflare" | "loophole" | "zrok" | "expose" | "packetriot" | "srvus";
 
-export interface WebnowConfig {
+export interface FolderexConfig {
   user?: string;
   pass?: string;
-  provider?: Provider;
+  tunnel?: Provider;
   subdomain?: string;
   sshkey?: string;
+  port?: string;
   [key: string]: string | undefined;
 }
 
-const VALID_KEYS = ["user", "pass", "provider", "subdomain", "sshkey"] as const;
+const VALID_KEYS = ["user", "pass", "tunnel", "subdomain", "sshkey", "port"] as const;
 type ConfigKey = (typeof VALID_KEYS)[number];
 
 export function isValidKey(key: string): key is ConfigKey {
@@ -24,7 +25,7 @@ export function isValidKey(key: string): key is ConfigKey {
 }
 
 export function isValidProvider(value: string): value is Provider {
-  return value === "cloudflare" || value === "loophole" || value === "zrok" || value === "expose" || value === "packetriot" || value === "srvus";
+  return ["cloudflare", "loophole", "zrok", "expose", "packetriot", "srvus"].includes(value);
 }
 
 export function getValidKeys(): readonly string[] {
@@ -37,14 +38,14 @@ function ensureConfigDir(): void {
   }
 }
 
-export function getConfig(): WebnowConfig {
+export function getConfig(): FolderexConfig {
   if (!existsSync(CONFIG_FILE)) {
     return {};
   }
 
   try {
     const raw = readFileSync(CONFIG_FILE, "utf-8");
-    return JSON.parse(raw) as WebnowConfig;
+    return JSON.parse(raw) as FolderexConfig;
   } catch {
     return {};
   }

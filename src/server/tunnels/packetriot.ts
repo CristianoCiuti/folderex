@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, createWriteStream } from "fs";
 import { join } from "path";
 import { homedir, platform, arch } from "os";
 import https from "https";
-import { extractZip } from "./extract.js";
+import { extractZip } from "../utils/extract.js";
 
 const PKTRIOT_DIR = join(homedir(), ".folderex", "bin");
 const PKTRIOT_VERSION = "1.0.0";
@@ -99,7 +99,7 @@ async function ensurePktriot(): Promise<string> {
   if (isZip) {
     extractZip(archivePath, PKTRIOT_DIR);
   } else {
-    const { extractTarGz } = await import("./extract.js");
+    const { extractTarGz } = await import("../utils/extract.js");
     await extractTarGz(archivePath, PKTRIOT_DIR);
   }
 
